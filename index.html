@@ -74,51 +74,75 @@ function snd(type){
 function nB(dur,vol){if(!AC)return;const b=AC.createBuffer(1,AC.sampleRate*dur,AC.sampleRate),d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*vol*(1-i/d.length);const s=AC.createBufferSource(),ng=AC.createGain();s.buffer=b;s.connect(ng);ng.connect(MG);ng.gain.setValueAtTime(vol,AC.currentTime);ng.gain.exponentialRampToValueAtTime(.001,AC.currentTime+dur);s.start();}
 
 // ============================================================
-// HORROR AMBIENT -- programmatic AudioBuffer horror track
+// HORROR AMBIENT -- RICH programmatic AudioBuffer horror track
 // ============================================================
 let ambOn=false;
 let heartT=0,scareT=0,boomT=0;
 
 function createHorrorTrack(){
-  const len=AC.sampleRate*4;
-  const buf=AC.createBuffer(2,len,AC.sampleRate);
-  const L=buf.getChannelData(0);
-  const R=buf.getChannelData(1);
+  const sr=AC.sampleRate;
+  const len=sr*8; // 8 seconds, loops seamlessly
+  const buf=AC.createBuffer(2,len,sr);
+  const L=buf.getChannelData(0),R=buf.getChannelData(1);
 
   for(let i=0;i<len;i++){
-    const t=i/AC.sampleRate;
+    const t=i/sr;
+    const progress=i/len; // 0 to 1 for seamless loop fading
+    // Smooth loop: fade last 0.5s into first 0.5s
+    const loopFade=progress<0.0625?progress/0.0625:progress>0.9375?(1-progress)/0.0625:1;
 
-    // Layer 1: Dark pad chord (Cm -- C, Eb, G at low octave)
-    const pad=Math.sin(t*2*Math.PI*65.4)*0.08
-            +Math.sin(t*2*Math.PI*77.8)*0.06
-            +Math.sin(t*2*Math.PI*98.0)*0.05
-            +Math.sin(t*2*Math.PI*130.8)*0.03;
+    // LAYER 1: Dark organ-like pad (Cm chord with detuning for eeriness)
+    const pad =
+      Math.sin(t*2*Math.PI*65.41)*0.06 +    // C2
+      Math.sin(t*2*Math.PI*65.41*1.003)*0.04 + // C2 detuned (chorus effect)
+      Math.sin(t*2*Math.PI*77.78)*0.05 +    // Eb2
+      Math.sin(t*2*Math.PI*98.0)*0.04 +     // G2
+      Math.sin(t*2*Math.PI*130.81)*0.025 +   // C3
+      Math.sin(t*2*Math.PI*155.56)*0.02;     // Eb3
 
-    // Layer 2: Slow pulsing (volume swell)
-    const pulse=0.5+0.5*Math.sin(t*2*Math.PI*0.25);
+    // LAYER 2: Slow breathing pulse (makes it feel alive)
+    const breath = 0.6 + 0.4*Math.sin(t*2*Math.PI*0.2);
 
-    // Layer 3: Eerie high whistle that drifts
-    const whistle=Math.sin(t*2*Math.PI*(800+Math.sin(t*0.7)*200))*0.015;
+    // LAYER 3: Creepy music box melody (pentatonic minor, sparse)
+    let musicBox = 0;
+    const melodyNotes = [311.1,261.6,233.1,196.0,311.1,349.2,311.1,261.6]; // Eb4,C4,Bb3,G3...
+    const noteLen = 1.0; // 1 second per note
+    const noteIdx = Math.floor(t/noteLen)%melodyNotes.length;
+    const noteT = (t%noteLen);
+    if(noteT < 0.3) { // note plays for 0.3s then silence
+      const env = noteT<0.01?noteT/0.01:Math.exp(-noteT*8); // sharp attack, fast decay
+      musicBox = Math.sin(noteT*2*Math.PI*melodyNotes[noteIdx])*env*0.04;
+      musicBox += Math.sin(noteT*2*Math.PI*melodyNotes[noteIdx]*2)*env*0.015; // harmonic
+      musicBox += Math.sin(noteT*2*Math.PI*melodyNotes[noteIdx]*4)*env*0.005; // shimmer
+    }
 
-    // Layer 4: Subtle noise texture
-    const noise=(Math.random()*2-1)*0.01;
-
-    // Layer 5: Deep heartbeat-like pulse (2 thumps per 4 seconds)
+    // LAYER 4: Heartbeat (realistic double-thump)
     let heart=0;
-    const beatT=t%2;
-    if(beatT<0.08)heart=Math.sin(beatT*Math.PI/0.08)*Math.sin(beatT*2*Math.PI*80)*0.15;
-    if(beatT>0.12&&beatT<0.18)heart=Math.sin((beatT-0.12)*Math.PI/0.06)*Math.sin((beatT-0.12)*2*Math.PI*60)*0.10;
+    const beatT=t%1.8; // every 1.8 seconds
+    if(beatT<0.06) heart=Math.sin(beatT/0.06*Math.PI)*Math.sin(beatT*2*Math.PI*70)*0.18;
+    if(beatT>0.1&&beatT<0.15) heart+=Math.sin((beatT-0.1)/0.05*Math.PI)*Math.sin((beatT-0.1)*2*Math.PI*55)*0.12;
 
-    // Layer 6: Dissonant interval that fades in and out
-    const dissonance=Math.sin(t*2*Math.PI*69.3)*0.04*(0.5+0.5*Math.sin(t*Math.PI*0.5));
+    // LAYER 5: Distant wind (filtered noise, varies over time)
+    const wind = (Math.sin(i*0.01)+Math.sin(i*0.007)*Math.sin(i*0.003))*0.015;
 
-    const sample=(pad*pulse+whistle+noise+heart+dissonance)*0.9;
+    // LAYER 6: Subsonic dread pulse (very low, felt more than heard)
+    const dread = Math.sin(t*2*Math.PI*30)*0.06*(0.3+0.7*Math.sin(t*Math.PI*0.125));
 
-    // Stereo widening
-    L[i]=sample+Math.sin(t*2*Math.PI*73)*0.02;
-    R[i]=sample+Math.sin(t*2*Math.PI*78)*0.02;
+    // LAYER 7: Random spectral whispers (pseudo-random from deterministic math)
+    let whisper = 0;
+    const wPhase = Math.sin(t*131.7)*Math.sin(t*97.3)*Math.sin(t*173.1);
+    if(Math.abs(wPhase)>0.7) whisper = wPhase*0.02*Math.sin(t*2*Math.PI*2000);
+
+    const sample = (pad*breath + musicBox + heart + wind + dread + whisper)*loopFade;
+
+    // Stereo width
+    L[i] = sample + Math.sin(t*2*Math.PI*73.4)*0.012;
+    R[i] = sample + Math.sin(t*2*Math.PI*78.1)*0.012;
+
+    // Soft clip to prevent distortion
+    L[i] = Math.tanh(L[i]*3)/3;
+    R[i] = Math.tanh(R[i]*3)/3;
   }
-
   return buf;
 }
 
@@ -126,15 +150,12 @@ function startAmbient(){
   if(ambOn||!AC)return;ambOn=true;
   if(AC.state==='suspended')AC.resume();
 
-  // HORROR MUSIC TRACK -- looping AudioBuffer
+  // HORROR MUSIC TRACK -- looping AudioBuffer at full volume
   const track=createHorrorTrack();
   const src=AC.createBufferSource();
-  const trackGain=AC.createGain();
   src.buffer=track;
   src.loop=true;
-  src.connect(trackGain);
-  trackGain.connect(AC.destination);
-  trackGain.gain.value=0.8;
+  src.connect(AC.destination);
   src.start();
 
   // WIND: gain .15 -- DIRECT to destination (kept from original)
@@ -218,6 +239,89 @@ let state='start',score=0,lives=3,invT=0,blastCD=0,frame=0;
 let shakeT=0,shakeI=0,lightT=0,lightX=0;
 let playerName='';
 let explosions=[];
+
+// ============================================================
+// VISUAL ENHANCEMENTS: will-o-wisps, blood splatters, parallax offset
+// ============================================================
+let wisps=[];
+let bloodSplatters=[];
+let parallaxX=0;
+
+function initWisps(){
+  wisps=[];
+  for(let i=0;i<5;i++){
+    wisps.push({
+      x:100+Math.random()*(W-200),
+      y:200+Math.random()*180,
+      baseX:100+Math.random()*(W-200),
+      baseY:200+Math.random()*180,
+      phase:Math.random()*6.28,
+      speed:0.3+Math.random()*0.5,
+      radius:40+Math.random()*60,
+      brightness:0.3+Math.random()*0.4,
+      flicker:Math.random()*6.28
+    });
+  }
+}
+
+function updateWisps(){
+  wisps.forEach(w=>{
+    w.phase+=0.008*w.speed;
+    w.flicker+=0.15+Math.random()*0.05;
+    w.x=w.baseX+Math.sin(w.phase)*w.radius;
+    w.y=w.baseY+Math.cos(w.phase*0.7)*w.radius*0.5;
+    // Keep in bounds
+    if(w.x<20)w.x=20;if(w.x>W-20)w.x=W-20;
+    if(w.y<100)w.y=100;if(w.y>GY-20)w.y=GY-20;
+  });
+}
+
+function drawWisps(){
+  wisps.forEach(w=>{
+    const flick=0.5+0.5*Math.sin(w.flicker);
+    const alpha=w.brightness*flick;
+    // Ground light circle
+    const groundG=X.createRadialGradient(w.x,GY,0,w.x,GY,50*alpha);
+    groundG.addColorStop(0,`rgba(255,160,40,${alpha*0.12})`);
+    groundG.addColorStop(1,'rgba(255,160,40,0)');
+    X.fillStyle=groundG;
+    X.beginPath();X.ellipse(w.x,GY,50*alpha,12,0,0,6.28);X.fill();
+    // Orb glow
+    const orbG=X.createRadialGradient(w.x,w.y,0,w.x,w.y,18);
+    orbG.addColorStop(0,`rgba(255,180,60,${alpha*0.5})`);
+    orbG.addColorStop(0.3,`rgba(255,120,20,${alpha*0.25})`);
+    orbG.addColorStop(1,'rgba(255,80,0,0)');
+    X.fillStyle=orbG;
+    X.beginPath();X.arc(w.x,w.y,18,0,6.28);X.fill();
+    // Bright center
+    X.fillStyle=`rgba(255,220,150,${alpha*0.7})`;
+    X.beginPath();X.arc(w.x,w.y,3,0,6.28);X.fill();
+  });
+}
+
+function addBloodSplatter(x,y){
+  // Add several blood decals
+  for(let i=0;i<3+Math.random()*4;i++){
+    bloodSplatters.push({
+      x:x+(Math.random()-0.5)*30,
+      y:GY-2+Math.random()*4,
+      r:4+Math.random()*8,
+      alpha:0.5+Math.random()*0.3,
+      color:Math.random()>0.5?'#440808':'#550a0a'
+    });
+  }
+  // Cap at 80 splatters
+  if(bloodSplatters.length>80)bloodSplatters=bloodSplatters.slice(-60);
+}
+
+function drawBloodSplatters(){
+  bloodSplatters.forEach(b=>{
+    X.fillStyle=b.color;
+    X.globalAlpha=b.alpha;
+    X.beginPath();X.ellipse(b.x,b.y,b.r,b.r*0.35,0,0,6.28);X.fill();
+  });
+  X.globalAlpha=1;
+}
 
 // ============================================================
 // HIGH SCORES -- localStorage + Elvis always 100 above best
@@ -414,6 +518,8 @@ function initEnv(){
   tombs=[];for(let i=0;i<8;i++)tombs.push({x:55+i*105+Math.random()*40,h:18+Math.random()*25,w:14+Math.random()*10,tilt:(Math.random()-.5)*.15});
   bats=[];for(let i=0;i<7;i++)bats.push({x:Math.random()*W,y:45+Math.random()*140,sp:1+Math.random()*1.8,amp:15+Math.random()*30,ph:Math.random()*6.28,wt:Math.random()*10});
   initPlatforms();
+  initWisps();
+  bloodSplatters=[];
 }
 initEnv();
 
@@ -438,8 +544,8 @@ function go(){
   }
 }
 
-// Particles
-function emit(x,y,col,n,sp,up,sz){for(let i=0;i<n;i++)particles.push({x,y,vx:(Math.random()-.5)*(sp||8),vy:(Math.random()-.5)*(sp||8)-(up||3),life:25+Math.random()*30,mx:55,col,sz:1.5+Math.random()*(sz||3),grav:12});}
+// Particles -- improved with more gravity and longer trails
+function emit(x,y,col,n,sp,up,sz){for(let i=0;i<(n*1.5|0);i++)particles.push({x,y,vx:(Math.random()-.5)*(sp||8),vy:(Math.random()-.5)*(sp||8)-(up||3),life:35+Math.random()*40,mx:75,col,sz:1.5+Math.random()*(sz||3),grav:.18});}
 
 function hits(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;}
 
@@ -481,7 +587,10 @@ function spawnZ(){
   const mul=runner?1.6:(.6+Math.random()*.5);
   zombies.push({x:R?W+20:-50,y:GY-(big?50:42),w:big?36:30,h:big?50:42,
     vx:R?-sp*mul:sp*mul,anim:0,type:big?'big':(runner?'runner':'normal'),
-    hp:big?2:1,lungeCD:runner?50+Math.random()*70:0});
+    hp:big?2:1,lungeCD:runner?50+Math.random()*70:0,
+    headTilt:(Math.random()-0.5)*0.2, // random head tilt for uncanny effect
+    bloodDripT:Math.random()*60 // blood drip timer offset
+  });
   if(Math.random()>.4)snd('groan');
 }
 function spawnC(){
@@ -499,27 +608,52 @@ function spawnC(){
 function shd(x,y,w){const g=X.createRadialGradient(x+w/2,GY+2,0,x+w/2,GY+2,w*.7);g.addColorStop(0,'rgba(0,0,0,.35)');g.addColorStop(1,'rgba(0,0,0,0)');X.fillStyle=g;X.beginPath();X.ellipse(x+w/2,GY+2,w*.7,6,0,0,6.28);X.fill();}
 function rR(x,y,w,h,r){X.beginPath();X.moveTo(x+r,y);X.lineTo(x+w-r,y);X.quadraticCurveTo(x+w,y,x+w,y+r);X.lineTo(x+w,y+h-r);X.quadraticCurveTo(x+w,y+h,x+w-r,y+h);X.lineTo(x+r,y+h);X.quadraticCurveTo(x,y+h,x,y+h-r);X.lineTo(x,y+r);X.quadraticCurveTo(x,y,x+r,y);X.closePath();X.fill();}
 
-// Background
+// Background -- with parallax
 function drawBG(){
+  // Calculate parallax offset from player position
+  parallaxX=(P.x-W/2)*0.03;
+
   const sg=X.createLinearGradient(0,0,0,GY);sg.addColorStop(0,'#050510');sg.addColorStop(.3,'#0c0828');sg.addColorStop(.6,'#150c3a');sg.addColorStop(1,'#1a0e45');X.fillStyle=sg;X.fillRect(0,0,W,H);
   if(lightT>0){X.fillStyle=`rgba(200,180,255,${lightT*.15})`;X.fillRect(0,0,W,H);if(lightT>.7){X.strokeStyle=`rgba(255,255,255,${lightT*.08})`;X.lineWidth=2;X.beginPath();let lx=lightX,ly=0;X.moveTo(lx,ly);for(let i=0;i<8;i++){lx+=(Math.random()-.5)*40;ly+=25+Math.random()*20;X.lineTo(lx,ly);}X.stroke();X.lineWidth=6;X.strokeStyle=`rgba(200,180,255,${lightT*.03})`;X.stroke();}lightT-=DT*1.5;if(lightT<0)lightT=0;}
   for(let i=0;i<80;i++){const sx=(i*137.5)%W,sy=(i*97.3)%280,tw=Math.sin(frame*.03+i*2.1)*.4+.6,sz=((i*3.7)%2)+.5;X.fillStyle=`rgba(255,255,220,${tw*.7})`;X.fillRect(sx|0,sy|0,sz,sz);}
   const mx=680,my=65,mr=36;for(let r=mr+40;r>mr;r-=4){X.fillStyle=`rgba(200,180,140,${.01*(mr+40-r)})`;X.beginPath();X.arc(mx,my,r,0,6.28);X.fill();}X.fillStyle='#e8dcc8';X.beginPath();X.arc(mx,my,mr,0,6.28);X.fill();X.fillStyle='#050510';X.beginPath();X.arc(mx+14,my-8,mr-4,0,6.28);X.fill();
   clouds.forEach(c=>{c.x+=c.sp;if(c.x>W+100)c.x=-c.w-50;X.fillStyle='rgba(15,10,30,.6)';X.beginPath();X.ellipse(c.x,c.y,c.w/2,c.h/2,0,0,6.28);X.ellipse(c.x+c.w*.3,c.y-c.h*.2,c.w*.35,c.h*.4,0,0,6.28);X.fill();});
   bats.forEach(b=>{b.x+=b.sp;b.wt+=.13;if(b.x>W+30)b.x=-30;const by=b.y+Math.sin(frame*.04+b.ph)*b.amp,wing=Math.sin(b.wt)*6;X.fillStyle='#0a0015';X.fillRect(b.x-1|0,by|0,3,2);X.beginPath();X.moveTo(b.x,by);X.lineTo(b.x-8,by-wing);X.lineTo(b.x-4,by+1);X.fill();X.beginPath();X.moveTo(b.x+2,by);X.lineTo(b.x+10,by-wing);X.lineTo(b.x+6,by+1);X.fill();});
-  X.fillStyle='#080418';for(let i=0;i<W;i+=3){const th=60+Math.sin(i*.02)*25+Math.sin(i*.05)*15+Math.sin(i*.13)*8;X.fillRect(i,GY-100-th,3,th+100);}
+
+  // Treeline with parallax shift
+  X.save();
+  X.translate(-parallaxX*1.5,0);
+  X.fillStyle='#080418';for(let i=-10;i<W+20;i+=3){const th=60+Math.sin(i*.02)*25+Math.sin(i*.05)*15+Math.sin(i*.13)*8;X.fillRect(i,GY-100-th,3,th+100);}
+  X.restore();
+
+  // Haunted house with parallax shift
+  X.save();
+  X.translate(-parallaxX,0);
   const hx=520;X.fillStyle='#0a0418';X.fillRect(hx,GY-180,130,180);X.beginPath();X.moveTo(hx-15,GY-180);X.lineTo(hx+65,GY-240);X.lineTo(hx+145,GY-180);X.fill();X.fillRect(hx+45,GY-270,35,90);X.beginPath();X.moveTo(hx+40,GY-270);X.lineTo(hx+62,GY-310);X.lineTo(hx+85,GY-270);X.fill();X.fillRect(hx+110,GY-220,14,40);
   const f1=.4+Math.sin(frame*.07)*.15,f2=.35+Math.sin(frame*.09+1)*.12;
   [[hx+25,GY-140,f1],[hx+75,GY-140,f2],[hx+50,GY-100,f1*.8],[hx+55,GY-285,f2]].forEach(([wx,wy,f])=>{const wg=X.createRadialGradient(wx+8,wy+10,0,wx+8,wy+10,30);wg.addColorStop(0,`rgba(255,180,60,${f*.25})`);wg.addColorStop(1,'rgba(255,180,60,0)');X.fillStyle=wg;X.fillRect(wx-20,wy-18,56,56);X.fillStyle=`rgba(255,190,80,${f})`;X.fillRect(wx,wy,16,20);X.fillStyle='#0a0418';X.fillRect(wx+7,wy,2,20);X.fillRect(wx,wy+9,16,2);});
   X.fillStyle='#060310';X.fillRect(hx+48,GY-50,30,50);
+  X.restore();
+
+  // Tombstones with slight parallax
+  X.save();
+  X.translate(-parallaxX*0.5,0);
   tombs.forEach(ts=>{X.save();X.translate(ts.x+ts.w/2,GY);X.rotate(ts.tilt);X.fillStyle='#1a1428';X.fillRect(-ts.w/2,-ts.h,ts.w,ts.h);X.beginPath();X.arc(0,-ts.h,ts.w/2,Math.PI,0);X.fill();X.fillStyle='#120e20';X.fillRect(-1,-ts.h+4,2,10);X.fillRect(-4,-ts.h+7,8,2);X.restore();});
+  X.restore();
+
   X.fillStyle='#110a22';for(let i=0;i<W;i+=28){X.fillRect(i,GY-28,3,28);X.beginPath();X.moveTo(i-1,GY-28);X.lineTo(i+1.5,GY-35);X.lineTo(i+4,GY-28);X.fill();}X.fillRect(0,GY-18,W,3);X.fillRect(0,GY-8,W,3);
   const gg=X.createLinearGradient(0,GY,0,H);gg.addColorStop(0,'#120a25');gg.addColorStop(.5,'#0a0618');gg.addColorStop(1,'#060412');X.fillStyle=gg;X.fillRect(0,GY,W,H-GY);
   for(let i=0;i<W;i+=8){const gh=3+Math.sin(i*.4+frame*.03)*2;X.fillStyle='#0e1a0a';X.fillRect(i,GY-gh,2,gh);}
+
+  // Blood splatters on ground (persistent)
+  drawBloodSplatters();
+
   for(let i=0;i<8;i++){const fx=(frame*.4+i*130)%(W+200)-100,fy=GY-5+Math.sin(frame*.02+i)*4;const fg=X.createRadialGradient(fx,fy,0,fx,fy,80);fg.addColorStop(0,`rgba(80,60,120,${.06+Math.sin(frame*.015+i)*.02})`);fg.addColorStop(1,'rgba(80,60,120,0)');X.fillStyle=fg;X.beginPath();X.ellipse(fx,fy,80,15,0,0,6.28);X.fill();}
   X.strokeStyle='rgba(150,140,200,.3)';X.lineWidth=.8;rain.forEach(r=>{r.y+=r.sp;r.x-=1.5;if(r.y>H){r.y=-10;r.x=Math.random()*W;}if(r.x<0)r.x=W;X.beginPath();X.moveTo(r.x|0,r.y|0);X.lineTo((r.x-1.5)|0,(r.y+r.s)|0);X.stroke();});
   // Draw platforms
   platforms.forEach(drawPlatform);
+  // Draw will-o-wisps
+  drawWisps();
 }
 
 // ============================================================
@@ -613,8 +747,234 @@ function drawN(){
   X.fillStyle='#1a1025';X.fillRect(px+10,py+44+lo,8,4);X.fillRect(px+18,py+44-lo,8,4);
 }
 
-// Zombie
-function drawZ(z){const px=z.x|0,py=z.y|0,big=z.type==='big',runner=z.type==='runner',s=big?1.3:1;shd(px,py,z.w);const bc=big?'#2a4a1a':runner?'#2a3a18':'#3a6a28',dc=big?'#1e3512':runner?'#1a2a10':'#2a501a';X.fillStyle=bc;X.fillRect(px+4*s,py+10*s,22*s,22*s);X.fillStyle=big?'#3a2818':runner?'#2a1a10':'#4a3a28';X.fillRect(px+4*s,py+10*s,22*s,5*s);X.fillStyle=big?'#3a5a2a':runner?'#2a4a1a':'#4a7a38';X.fillRect(px+6*s,py,18*s,14*s);X.fillStyle=dc;X.fillRect(px+6*s,py+3*s,18*s,2*s);const eG=Math.sin(frame*.08)*.2+.8,eC=runner?`rgba(255,40,40,${eG})`:`rgba(255,255,0,${eG})`;X.fillStyle=eC;X.fillRect(px+8*s,py+5*s,4*s,3*s);X.fillRect(px+18*s,py+5*s,3*s,4*s);if(runner){const rg=X.createRadialGradient(px+10*s,py+6*s,0,px+10*s,py+6*s,8);rg.addColorStop(0,'rgba(255,0,0,.3)');rg.addColorStop(1,'rgba(255,0,0,0)');X.fillStyle=rg;X.fillRect(px+4*s,py,20*s,14*s);}X.fillStyle=runner?'#400':'#220';X.fillRect(px+9*s,py+6*s,2*s,2*s);X.fillRect(px+19*s,py+6*s,1.5*s,2*s);X.fillStyle='#1a2a10';X.fillRect(px+10*s,py+10*s,10*s,3*s);X.fillStyle='#ccc';X.fillRect(px+11*s,py+10*s,2*s,2*s);X.fillRect(px+16*s,py+10*s,2*s,2*s);X.fillStyle='rgba(120,10,10,.6)';X.fillRect(px+14*s,py+14*s,2,4);if(runner){X.fillStyle='rgba(150,10,10,.7)';X.fillRect(px+6*s,py+12*s,2,8);X.fillRect(px+20*s,py+10*s,2,10);X.fillRect(px+12*s,py+8*s,3,5);}const aw=Math.sin(z.anim*.12)*4;X.fillStyle=bc;X.fillRect(px-2*s,py+12*s+aw,6*s,5*s);X.fillRect(px+24*s,py+14*s-aw,6*s,5*s);const lw=Math.sin(z.anim*.08)*4;X.fillStyle=dc;X.fillRect(px+7*s,py+30*s,6*s,12+lw);X.fillRect(px+17*s,py+30*s,6*s,12-lw);}
+// ============================================================
+// ZOMBIE -- SCARIER versions with gore details
+// ============================================================
+function drawZ(z){
+  const px=z.x|0,py=z.y|0;
+  const big=z.type==='big',runner=z.type==='runner';
+  const s=big?1.3:1;
+  shd(px,py,z.w);
+
+  // Head tilt for uncanny effect
+  const headTilt=z.headTilt||0;
+
+  if(big){
+    // === BIG ZOMBIE: Massive, darker, glowing cracks, bone spike arm ===
+    const bc='#1a3510',dc='#0e2208';
+
+    // Body -- darker, more massive
+    X.fillStyle=bc;X.fillRect(px+2*s,py+10*s,26*s,26*s);
+    // Torn clothing shreds
+    X.fillStyle='#2a1a10';
+    X.fillRect(px+4*s,py+12*s,20*s,4*s);
+    X.fillRect(px+8*s,py+20*s,14*s,3*s);
+
+    // Glowing cracks in skin
+    X.strokeStyle='rgba(200,60,0,0.6)';X.lineWidth=1.5;
+    X.beginPath();X.moveTo(px+6*s,py+14*s);X.lineTo(px+12*s,py+22*s);X.lineTo(px+8*s,py+30*s);X.stroke();
+    X.beginPath();X.moveTo(px+18*s,py+12*s);X.lineTo(px+22*s,py+24*s);X.stroke();
+    // Crack glow
+    X.strokeStyle='rgba(255,100,0,0.3)';X.lineWidth=4;
+    X.beginPath();X.moveTo(px+6*s,py+14*s);X.lineTo(px+12*s,py+22*s);X.stroke();
+    X.lineWidth=1;
+
+    // Head with tilt
+    X.save();
+    X.translate(px+15*s,py+7*s);
+    X.rotate(headTilt+Math.sin(frame*0.03)*0.05);
+    X.fillStyle='#1a4010';
+    X.fillRect(-9*s,-7*s,18*s,14*s);
+    // Eyes -- aggressive pulsing
+    const eG=(Math.sin(frame*.12)*.3+.7);
+    X.fillStyle=`rgba(255,80,0,${eG})`;
+    X.fillRect(-6*s,-2*s,5*s,4*s);
+    X.fillRect(3*s,-2*s,4*s,4*s);
+    // Eye glow
+    const eg=X.createRadialGradient(0,-1*s,0,0,-1*s,12*s);
+    eg.addColorStop(0,`rgba(255,80,0,${eG*0.3})`);eg.addColorStop(1,'rgba(255,0,0,0)');
+    X.fillStyle=eg;X.fillRect(-10*s,-8*s,20*s,16*s);
+    // Mouth
+    X.fillStyle='#0a0a00';X.fillRect(-4*s,4*s,8*s,3*s);
+    X.fillStyle='#ccc';X.fillRect(-3*s,4*s,2*s,2*s);X.fillRect(2*s,4*s,2*s,2*s);
+    X.restore();
+
+    // LEFT ARM: bone spike weapon
+    const aw=Math.sin(z.anim*.12)*4;
+    X.fillStyle=bc;X.fillRect(px-4*s,py+14*s+aw,6*s,8*s);
+    // Bone spike extending from arm
+    X.fillStyle='#d4c8a0';
+    X.beginPath();
+    X.moveTo(px-4*s,py+14*s+aw);
+    X.lineTo(px-16*s,py+10*s+aw);
+    X.lineTo(px-2*s,py+18*s+aw);
+    X.closePath();X.fill();
+    // Spike tip
+    X.fillStyle='#aa2020';
+    X.fillRect(px-16*s,py+9*s+aw,4,3);
+
+    // Right arm normal
+    X.fillStyle=bc;X.fillRect(px+24*s,py+16*s-aw,6*s,8*s);
+
+    // Bones visible through tears
+    X.fillStyle='#c8b888';
+    X.fillRect(px+10*s,py+24*s,3,6);
+    X.fillRect(px+18*s,py+22*s,2,5);
+
+    // Blood dripping from mouth
+    const dripPhase=(frame+z.bloodDripT)%50;
+    if(dripPhase<30){
+      X.fillStyle='rgba(150,10,10,0.7)';
+      X.fillRect(px+14*s,py+14*s,2,dripPhase*0.4);
+    }
+
+    // Legs
+    const lw=Math.sin(z.anim*.08)*4;
+    X.fillStyle=dc;X.fillRect(px+7*s,py+34*s,7*s,14+lw);X.fillRect(px+17*s,py+34*s,7*s,14-lw);
+
+  } else if(runner){
+    // === RUNNER ZOMBIE: Hunched, longer arms, mouth wide open, blood trail ===
+    const bc='#2a3a18',dc='#1a2a10';
+
+    // Body -- hunched forward (shifted forward)
+    const hunch=4; // lean forward
+    X.fillStyle=bc;X.fillRect(px+4*s+hunch,py+10*s,22*s,22*s);
+    // Torn clothing
+    X.fillStyle='#3a2010';
+    X.fillRect(px+6*s+hunch,py+10*s,16*s,4*s);
+
+    // Head with tilt -- hunched forward more
+    X.save();
+    X.translate(px+15*s+hunch+3,py+5*s);
+    X.rotate(headTilt+0.15+Math.sin(frame*0.06)*0.08); // tilted forward
+    X.fillStyle='#2a4a1a';
+    X.fillRect(-9*s,-7*s,18*s,14*s);
+    // Eyes -- red aggressive pulsing fast
+    const eG=(Math.sin(frame*.15)*.4+.6);
+    X.fillStyle=`rgba(255,40,40,${eG})`;
+    X.fillRect(-6*s,-2*s,4*s,3*s);
+    X.fillRect(4*s,-2*s,3*s,4*s);
+    // Eye glow
+    const rg=X.createRadialGradient(0,0,0,0,0,10*s);
+    rg.addColorStop(0,`rgba(255,0,0,${eG*0.35})`);rg.addColorStop(1,'rgba(255,0,0,0)');
+    X.fillStyle=rg;X.fillRect(-10*s,-8*s,20*s,16*s);
+    // Pupils
+    X.fillStyle='#400';X.fillRect(-5*s,-1*s,2*s,2*s);X.fillRect(5*s,0,1.5*s,2*s);
+    // Wide open mouth with more teeth
+    X.fillStyle='#1a0a00';X.fillRect(-5*s,4*s,10*s,5*s);
+    X.fillStyle='#ddd';
+    X.fillRect(-4*s,4*s,2*s,2*s);X.fillRect(-1*s,4*s,2*s,2*s);
+    X.fillRect(2*s,4*s,2*s,2*s);X.fillRect(4*s,4*s,1*s,2*s);
+    // Bottom teeth
+    X.fillRect(-3*s,7*s,2*s,2*s);X.fillRect(1*s,7*s,2*s,2*s);
+    // Tongue
+    X.fillStyle='#882222';X.fillRect(-2*s,6*s,4*s,2*s);
+    X.restore();
+
+    // Longer arms dragging -- extended
+    const aw=Math.sin(z.anim*.15)*6;
+    X.fillStyle=bc;
+    X.fillRect(px-6*s+hunch,py+12*s+aw,6*s,14*s); // left arm longer
+    X.fillRect(px+24*s+hunch,py+14*s-aw,6*s,14*s); // right arm longer
+    // Claw-like hands
+    X.fillStyle='#1a2a08';
+    X.fillRect(px-8*s+hunch,py+24*s+aw,4,3);
+    X.fillRect(px+28*s+hunch,py+26*s-aw,4,3);
+
+    // Blood dripping from mouth
+    const dripPhase=(frame+z.bloodDripT)%40;
+    if(dripPhase<25){
+      X.fillStyle='rgba(180,10,10,0.6)';
+      X.fillRect(px+15*s+hunch+3,py+12*s,2,dripPhase*0.3);
+    }
+
+    // Blood splatter on body
+    X.fillStyle='rgba(150,10,10,.7)';
+    X.fillRect(px+6*s+hunch,py+12*s,2,8);
+    X.fillRect(px+20*s+hunch,py+10*s,2,10);
+    X.fillRect(px+12*s+hunch,py+8*s,3,5);
+
+    // Blood trail particles behind runner
+    if(frame%4===0&&Math.abs(z.vx)>2){
+      particles.push({
+        x:px+(z.vx>0?0:z.w),y:py+z.h-4,
+        vx:-z.vx*0.1+(Math.random()-0.5)*0.5,vy:-Math.random()*1,
+        life:20+Math.random()*15,mx:35,
+        col:'rgba(120,10,10,0.6)',sz:1+Math.random()*2,grav:.15
+      });
+    }
+
+    // Bones visible through tears
+    X.fillStyle='#c8b888';
+    X.fillRect(px+12*s+hunch,py+18*s,2,5);
+
+    // Legs
+    const lw=Math.sin(z.anim*.12)*5;
+    X.fillStyle=dc;X.fillRect(px+7*s,py+30*s,6*s,12+lw);X.fillRect(px+17*s,py+30*s,6*s,12-lw);
+
+  } else {
+    // === NORMAL ZOMBIE: Blood drips, torn clothing, visible bones ===
+    const bc='#3a6a28',dc='#2a501a';
+
+    // Body
+    X.fillStyle=bc;X.fillRect(px+4*s,py+10*s,22*s,22*s);
+    // Torn clothing shreds hanging off body
+    X.fillStyle='#4a3a28';
+    X.fillRect(px+4*s,py+10*s,22*s,5*s);
+    // Hanging shreds
+    X.fillStyle='#3a2818';
+    X.fillRect(px+6*s,py+30*s,3,6); // left shred
+    X.fillRect(px+22*s,py+28*s,3,8); // right shred
+    X.fillRect(px+14*s,py+31*s,4,5); // middle shred
+
+    // Bones visible through tears
+    X.fillStyle='#c8b888';
+    X.fillRect(px+10*s,py+16*s,2,4); // rib
+    X.fillRect(px+14*s,py+18*s,2,3); // rib
+    X.fillRect(px+18*s,py+15*s,2,5); // rib
+
+    // Head with tilt
+    X.save();
+    X.translate(px+15*s,py+7*s);
+    X.rotate(headTilt+Math.sin(frame*0.04+z.x*0.1)*0.06);
+    X.fillStyle='#4a7a38';
+    X.fillRect(-9*s,-7*s,18*s,14*s);
+    // Dark brow
+    X.fillStyle=dc;X.fillRect(-9*s,-4*s,18*s,2*s);
+    // Eyes -- pulsing/flickering more aggressively
+    const eG=Math.sin(frame*.1+z.x)*.3+.7;
+    const eFlicker=Math.random()>0.92?0.2:1; // random flicker
+    X.fillStyle=`rgba(255,255,0,${eG*eFlicker})`;
+    X.fillRect(-7*s,-2*s,4*s,3*s);
+    X.fillRect(3*s,-2*s,3*s,4*s);
+    // Pupils
+    X.fillStyle='#220';X.fillRect(-6*s,-1*s,2*s,2*s);X.fillRect(4*s,0*s,1.5*s,2*s);
+    // Mouth
+    X.fillStyle='#1a2a10';X.fillRect(-5*s,4*s,10*s,3*s);
+    X.fillStyle='#ccc';X.fillRect(-4*s,4*s,2*s,2*s);X.fillRect(1*s,4*s,2*s,2*s);
+    X.restore();
+
+    // Blood dripping from mouth (animated)
+    const dripPhase=(frame+(z.bloodDripT||0))%60;
+    if(dripPhase<35){
+      X.fillStyle='rgba(140,10,10,0.5)';
+      const dripLen=dripPhase*0.3;
+      X.fillRect(px+14*s,py+14*s,2,dripLen);
+      // Drip droplet at bottom
+      if(dripLen>3){
+        X.beginPath();X.arc(px+15*s,py+14*s+dripLen,1.5,0,6.28);X.fill();
+      }
+    }
+
+    // Arms
+    const aw=Math.sin(z.anim*.12)*4;
+    X.fillStyle=bc;X.fillRect(px-2*s,py+12*s+aw,6*s,5*s);X.fillRect(px+24*s,py+14*s-aw,6*s,5*s);
+
+    // Legs
+    const lw=Math.sin(z.anim*.08)*4;
+    X.fillStyle=dc;X.fillRect(px+7*s,py+30*s,6*s,12+lw);X.fillRect(px+17*s,py+30*s,6*s,12-lw);
+  }
+}
 
 // Coin
 function drawCoin(c){const px=c.x,py=c.y,bob=Math.sin(frame*.06+c.t)*3,gem=c.val===50;const gg=X.createRadialGradient(px+9,py+9+bob,0,px+9,py+9+bob,18);gg.addColorStop(0,gem?'rgba(0,255,100,.2)':'rgba(255,215,0,.2)');gg.addColorStop(1,'rgba(0,0,0,0)');X.fillStyle=gg;X.beginPath();X.arc(px+9,py+9+bob,18,0,6.28);X.fill();if(gem){X.fillStyle='#00dd66';X.beginPath();X.moveTo(px+9,py+bob);X.lineTo(px+18,py+9+bob);X.lineTo(px+9,py+18+bob);X.lineTo(px,py+9+bob);X.closePath();X.fill();}else{const sw=8+Math.sin(frame*.08+c.t)*6;X.fillStyle='#c8960a';X.beginPath();X.ellipse(px+9,py+9+bob,sw,9,0,0,6.28);X.fill();X.fillStyle='#f0c030';X.beginPath();X.ellipse(px+9,py+9+bob,sw*.75,7,0,0,6.28);X.fill();if(sw>5){X.fillStyle='#a07808';X.font='bold 10px serif';X.textAlign='center';X.fillText('$',px+9,py+13+bob);}}}
@@ -773,6 +1133,9 @@ function update(){
   // Ambient audio
   updateAmbient(DT);
 
+  // Update wisps
+  updateWisps();
+
   if(Math.random()<.004){lightT=1.2;lightX=100+Math.random()*600;snd('thunder');}
 
   let mv=false;
@@ -887,6 +1250,8 @@ function update(){
         snd('zombiedeath');
         emit(z.x+z.w/2,z.y+z.h/2,'#4a8a3a',15,7,4,3);
         emit(z.x+z.w/2,z.y+10,'#661010',8,6,3,2.5);
+        // Blood splatter on ground
+        addBloodSplatter(z.x+z.w/2,z.y+z.h);
 
         // BOMB: area damage -- explosion visual + kill nearby zombies
         if(wpDef.aoe>0){
@@ -907,6 +1272,7 @@ function update(){
               if(oz.hp<=0){
                 score+=oz.type==='big'?35:15;
                 emit(oz.x+oz.w/2,oz.y+oz.h/2,'#ff8844',12,8,4,3);
+                addBloodSplatter(oz.x+oz.w/2,oz.y+oz.h);
               }
             }
           });
@@ -940,6 +1306,7 @@ function update(){
             score+=oz.type==='big'?35:15;
             snd('zombiedeath');
             emit(oz.x+oz.w/2,oz.y+oz.h/2,'#ff8844',12,8,4,3);
+            addBloodSplatter(oz.x+oz.w/2,oz.y+oz.h);
           }
         }
       });
@@ -959,8 +1326,28 @@ function render(){
   else if(state==='playing'){drawBG();coins.forEach(drawCoin);healthPacks.forEach(drawHealth);zombies.forEach(drawZ);drawN();blasts.forEach(drawB);
     // Draw explosions
     explosions.forEach(drawExplosion);
-    particles.forEach(p=>{const a=Math.min(1,p.life/p.mx*2);X.globalAlpha=a;X.fillStyle=p.col;X.fillRect(p.x-p.sz/2|0,p.y-p.sz/2|0,p.sz,p.sz);});X.globalAlpha=1;
-    const vg=X.createRadialGradient(W/2,H/2,H*.4,W/2,H/2,W*.7);vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.35)');X.fillStyle=vg;X.fillRect(0,0,W,H);drawHUD();
+    // Particles with trails
+    particles.forEach(p=>{const a=Math.min(1,p.life/p.mx*2);X.globalAlpha=a;X.fillStyle=p.col;
+      // Draw trail behind particle
+      X.fillRect((p.x-p.vx*0.5-p.sz/2)|0,(p.y-p.vy*0.5-p.sz/2)|0,p.sz*0.6,p.sz*0.6);
+      X.globalAlpha=a;
+      X.fillRect(p.x-p.sz/2|0,p.y-p.sz/2|0,p.sz,p.sz);
+    });X.globalAlpha=1;
+    const vg=X.createRadialGradient(W/2,H/2,H*.4,W/2,H/2,W*.7);vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.35)');X.fillStyle=vg;X.fillRect(0,0,W,H);
+
+    // Red screen tint when low health
+    if(lives===1){
+      const pulse=0.08+Math.sin(frame*0.08)*0.04;
+      X.fillStyle=`rgba(180,0,0,${pulse})`;
+      X.fillRect(0,0,W,H);
+      // Red vignette edges
+      const rv=X.createRadialGradient(W/2,H/2,H*.25,W/2,H/2,W*.65);
+      rv.addColorStop(0,'rgba(0,0,0,0)');
+      rv.addColorStop(1,`rgba(120,0,0,${0.15+Math.sin(frame*0.1)*0.05})`);
+      X.fillStyle=rv;X.fillRect(0,0,W,H);
+    }
+
+    drawHUD();
   } else {drawBG();zombies.forEach(drawZ);drawN();drawGO();}
   X.restore();
 }
