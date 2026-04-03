@@ -258,7 +258,7 @@ function drawScoreboard(y){
 // PHYSICS -- tuned for FIXED 60hz timestep (Gaffer on Games)
 // ============================================================
 const DT=1/60;
-const GRAVITY=0.65,JUMP_V=-11,MSPD=5,FRIC=.78;
+const GRAVITY=0.6,JUMP_V=-12,MSPD=5,FRIC=.78;
 
 const P={x:120,y:GY-48,w:36,h:48,vy:0,vx:0,gnd:true,face:1,anim:0,run:false,wasGnd:true};
 let zombies=[],coins=[],blasts=[],particles=[],rain=[],clouds=[],tombs=[],bats=[],platforms=[];
@@ -266,12 +266,15 @@ let zombies=[],coins=[],blasts=[],particles=[],rain=[],clouds=[],tombs=[],bats=[
 // ============================================================
 // PLATFORMS -- spooky wooden planks at different heights
 // ============================================================
+// Player max jump height ~93px from ground (GY=420, feet at 420)
+// So player feet can reach ~327 at peak. Platforms must be BELOW that.
+// Stair-step layout so player can chain jumps to reach higher ones
 const PLAT_DEFS=[
-  {x:80,y:280,w:90,h:14},
-  {x:250,y:310,w:100,h:14},
-  {x:440,y:250,w:85,h:14},
-  {x:600,y:320,w:95,h:14},
-  {x:750,y:270,w:80,h:14},
+  {x:80,y:380,w:90,h:12},   // step 1: easy, just above ground
+  {x:230,y:350,w:100,h:12},  // step 2: reachable from ground
+  {x:420,y:350,w:85,h:12},   // step 2b: another mid platform
+  {x:580,y:320,w:95,h:12},   // step 3: reachable from step 2
+  {x:750,y:350,w:80,h:12},   // step 2c: right side
 ];
 
 function initPlatforms(){
