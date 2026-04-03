@@ -31,13 +31,23 @@ C.width=900;C.height=550;const W=900,H=550,GY=420;
 // ============================================================
 let AC=null,MG=null;
 function ensureAudio(){
-  if(AC)return;
+  if(AC){if(AC.state==='suspended')AC.resume();return;}
+  // Create AND resume in same user gesture -- CRITICAL
   AC=new AudioContext();
   MG=AC.createGain();MG.gain.value=1.0;MG.connect(AC.destination);
+  // Force resume immediately
+  AC.resume();
+  // Play a silent buffer to fully unlock audio on iOS/Chrome
+  const silentBuf=AC.createBuffer(1,1,AC.sampleRate);
+  const s=AC.createBufferSource();s.buffer=silentBuf;s.connect(AC.destination);s.start();
+  console.log('Audio created, state:',AC.state);
 }
-// Resume on ANY user event (Chrome autoplay policy fix)
+// Resume on ANY user event
 ['click','touchend','keydown','mousedown','pointerup'].forEach(e=>{
-  document.addEventListener(e,()=>{if(AC&&AC.state==='suspended')AC.resume();},{once:false});
+  document.addEventListener(e,()=>{
+    if(!AC)ensureAudio();
+    else if(AC.state==='suspended')AC.resume();
+  },{once:false});
 });
 
 function snd(type){
@@ -73,26 +83,26 @@ function startAmbient(){
 
   // DRONE 1: Sub-bass with LFO wobble -- LOUD
   const dr=AC.createOscillator(),drg=AC.createGain(),drf=AC.createBiquadFilter();
-  dr.type='sawtooth';dr.frequency.value=36;drf.type='lowpass';drf.frequency.value=80;
+  dr.type='sawtooth';dr.frequency.value=75;drf.type='lowpass';drf.frequency.value=200;
   dr.connect(drf);drf.connect(drg);drg.connect(MG);drg.gain.value=.18;dr.start();
   const lfo=AC.createOscillator(),lfog=AC.createGain();lfo.type='sine';lfo.frequency.value=.13;lfog.gain.value=5;
   lfo.connect(lfog);lfog.connect(dr.frequency);lfo.start();
 
   // DRONE 2: Tritone dissonance (maximally creepy interval)
-  const d2=AC.createOscillator(),d2g=AC.createGain();d2.type='sine';d2.frequency.value=51;
+  const d2=AC.createOscillator(),d2g=AC.createGain();d2.type='sine';d2.frequency.value=106; // tritone of 75hz
   d2.connect(d2g);d2g.connect(MG);d2g.gain.value=.10;d2.start();
   const l2=AC.createOscillator(),l2g=AC.createGain();l2.type='sine';l2.frequency.value=.08;l2g.gain.value=3;
   l2.connect(l2g);l2g.connect(d2.frequency);l2.start();
 
   // DRONE 3: Sub-rumble
-  const d3=AC.createOscillator(),d3g=AC.createGain();d3.type='sine';d3.frequency.value=22;
+  const d3=AC.createOscillator(),d3g=AC.createGain();d3.type='sawtooth';d3.frequency.value=150; // eerie mid-range hum
   d3.connect(d3g);d3g.connect(MG);d3g.gain.value=.12;d3.start();
 
   // WIND: Filtered looping noise with gust modulation
   const wb=AC.createBuffer(1,AC.sampleRate*6,AC.sampleRate),wd=wb.getChannelData(0);
   for(let i=0;i<wd.length;i++)wd[i]=(Math.random()*2-1)*.7*(.2+.8*Math.sin(i/AC.sampleRate*.25)**2);
   const wn=AC.createBufferSource(),wg=AC.createGain(),wf=AC.createBiquadFilter();
-  wn.buffer=wb;wn.loop=true;wf.type='bandpass';wf.frequency.value=600;wf.Q.value=.5;
+  wn.buffer=wb;wn.loop=true;wf.type='bandpass';wf.frequency.value=900;wf.Q.value=.4;
   wn.connect(wf);wf.connect(wg);wg.connect(MG);wg.gain.value=.12;wn.start();
   const wl=AC.createOscillator(),wlg=AC.createGain();wl.type='sine';wl.frequency.value=.2;wlg.gain.value=300;
   wl.connect(wlg);wlg.connect(wf.frequency);wl.start();
@@ -111,7 +121,7 @@ function updateAmbient(dt){
     const t=AC.currentTime;
     for(let i=0;i<2;i++){
       const b=AC.createOscillator(),bg=AC.createGain();b.type='sine';
-      b.frequency.setValueAtTime(55,t+i*.12);b.frequency.exponentialRampToValueAtTime(25,t+i*.12+.1);
+      b.frequency.setValueAtTime(90,t+i*.12);b.frequency.exponentialRampToValueAtTime(45,t+i*.12+.1);
       b.connect(bg);bg.connect(MG);bg.gain.setValueAtTime(i===0?.22:.14,t+i*.12);bg.gain.exponentialRampToValueAtTime(.001,t+i*.12+.12);
       b.start(t+i*.12);b.stop(t+i*.12+.12);
     }
@@ -243,7 +253,8 @@ let zombies=[],coins=[],blasts=[],particles=[],rain=[],clouds=[],tombs=[],bats=[
 const K={},TC={left:false,right:false,jump:false,blast:false};
 function tryGo(){
   if(state==='playing')return;
-  // score already saved on gameover
+  // CRITICAL: create + resume AudioContext BEFORE prompt() blocks thread
+  ensureAudio();
   if(!playerName){playerName=prompt('Enter your name for the scoreboard:','PLAYER');if(!playerName)playerName='PLAYER';playerName=playerName.toUpperCase().slice(0,10);}
   go();
 }
